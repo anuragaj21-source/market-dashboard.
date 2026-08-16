@@ -6,8 +6,8 @@ import plotly.express as px
 import pandas as pd
 
 # Page Setup
-st.set_page_config(page_title="Macro, Commodities & NSE Sector Dashboard", layout="wide")
-st.title("🌐 Real-Time Global Macro, Commodities & NSE Market Dashboard")
+st.set_page_config(page_title="Macro, Commodities & NSE/BSE Sector Dashboard", layout="wide")
+st.title("🌐 Real-Time Global Macro, Commodities & NSE/BSE Market Dashboard")
 
 # -------------------------------------------------------------
 # GLOBAL COMMODITIES & MACRO SNAPSHOT TICKERS
@@ -19,14 +19,15 @@ MACRO_TICKERS = {
     "Silver Spot (USD)": "SI=F",
     "Copper Futures": "HG=F",
     "USD/INR FX": "INR=X",
-    "Nifty 50 Index": "^NSEI"
+    "Nifty 50 Index": "^NSEI",
+    "BSE Sensex Index": "^BSESN"
 }
 
 # -------------------------------------------------------------
-# DYNAMIC NSE SECTOR & CAP FETCHER
+# DYNAMIC NSE & BSE SECTOR / CAP FETCHER
 # -------------------------------------------------------------
 @st.cache_data(ttl=86400)
-def get_live_nse_constituents():
+def get_live_constituents():
     def load_nse_csv(url, fallback_dict):
         try:
             df = pd.read_csv(url)
@@ -34,18 +35,21 @@ def get_live_nse_constituents():
         except Exception:
             return fallback_dict
 
+    # Market Cap Groups
     large_cap = load_nse_csv("https://archives.nseindia.com/content/indices/ind_nifty50list.csv", {"RELIANCE.NS": "Reliance Ind", "TCS.NS": "TCS", "HDFCBANK.NS": "HDFC Bank"})
     mid_cap = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftymidcap150list.csv", {"PERSISTENT.NS": "Persistent Systems", "POLYCAB.NS": "Polycab"})
     small_cap = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftysmallcap250list.csv", {"CDSL.NS": "CDSL", "KEI.NS": "KEI Ind"})
 
-    nifty_auto = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyautolist.csv", {"TATAMOTORS.NS": "Tata Motors", "M&M.NS": "M&M", "MARUTI.NS": "Maruti"})
-    nifty_bank = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftybanklist.csv", {"HDFCBANK.NS": "HDFC Bank", "ICICIBANK.NS": "ICICI Bank", "SBIN.NS": "SBI"})
-    nifty_it = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyitlist.csv", {"TCS.NS": "TCS", "INFY.NS": "Infosys", "HCLTECH.NS": "HCL Tech"})
-    nifty_pharma = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftypharmalist.csv", {"SUNPHARMA.NS": "Sun Pharma", "CIPLA.NS": "Cipla"})
-    nifty_fmcg = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyfmcglist.csv", {"ITC.NS": "ITC", "HINDUNILVR.NS": "Hindustan Unilever"})
-    nifty_metal = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftymetallist.csv", {"TATASTEEL.NS": "Tata Steel", "JSWSTEEL.NS": "JSW Steel"})
-    nifty_energy = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyenergylist.csv", {"RELIANCE.NS": "Reliance Ind", "NTPC.NS": "NTPC"})
-    nifty_realty = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyrealtylist.csv", {"DLF.NS": "DLF", "GODREJPROP.NS": "Godrej Prop"})
+    # Sectoral Groups
+    nifty_auto = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyautolist.csv", {"TATAMOTORS.NS": "Tata Motors", "M&M.NS": "M&M", "MARUTI.NS": "Maruti", "BAJAJ-AUTO.NS": "Bajaj Auto"})
+    nifty_bank = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftybanklist.csv", {"HDFCBANK.NS": "HDFC Bank", "ICICIBANK.NS": "ICICI Bank", "SBIN.NS": "SBI", "KOTAKBANK.NS": "Kotak Bank"})
+    nifty_it = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyitlist.csv", {"TCS.NS": "TCS", "INFY.NS": "Infosys", "HCLTECH.NS": "HCL Tech", "WIPRO.NS": "Wipro"})
+    nifty_pharma = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftypharmalist.csv", {"SUNPHARMA.NS": "Sun Pharma", "CIPLA.NS": "Cipla", "DRREDDY.NS": "Dr Reddy's"})
+    nifty_fmcg = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyfmcglist.csv", {"ITC.NS": "ITC", "HINDUNILVR.NS": "Hindustan Unilever", "NESTLEIND.NS": "Nestle India"})
+    nifty_metal = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftymetallist.csv", {"TATASTEEL.NS": "Tata Steel", "JSWSTEEL.NS": "JSW Steel", "HINDALCO.NS": "Hindalco"})
+    nifty_energy = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyenergylist.csv", {"RELIANCE.NS": "Reliance Ind", "NTPC.NS": "NTPC", "ONGC.NS": "ONGC"})
+    nifty_realty = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyrealtylist.csv", {"DLF.NS": "DLF", "GODREJPROP.NS": "Godrej Prop", "OBERREALTY.NS": "Oberoi Realty"})
+    nifty_fin_service = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyfinancialserviceslist.csv", {"BAJFINANCE.NS": "Bajaj Finance", "BAJAJFINSV.NS": "Bajaj Finserv"})
 
     return {
         "NSE Large Cap (Nifty 50)": large_cap,
@@ -58,58 +62,74 @@ def get_live_nse_constituents():
         "Nifty FMCG": nifty_fmcg,
         "Nifty Metal": nifty_metal,
         "Nifty Energy": nifty_energy,
-        "Nifty Realty": nifty_realty
+        "Nifty Realty": nifty_realty,
+        "Nifty Financial Services": nifty_fin_service
     }
 
-MARKET_GROUPS = get_live_nse_constituents()
+MARKET_GROUPS = get_live_constituents()
 
 # -------------------------------------------------------------
-# CACHED DATA HELPERS & CLEANERS
+# CACHED DATA HELPERS & BATCH CHUNKING
 # -------------------------------------------------------------
 @st.cache_data(ttl=300)
 def fetch_ticker_data(symbols):
     try:
-        return yf.download(tickers=list(symbols), period="2d", auto_adjust=True)
+        return yf.download(tickers=list(symbols), period="5d", auto_adjust=True)
     except Exception:
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
 def fetch_heatmap_data(symbol_dict):
     tickers = list(symbol_dict.keys())
-    try:
-        data = yf.download(tickers=tickers, period="2d", auto_adjust=True)
-        records = []
-        
-        for sym, name in symbol_dict.items():
-            try:
-                if isinstance(data.columns, pd.MultiIndex):
-                    close_series = data['Close'][sym].dropna()
-                else:
-                    close_series = data['Close'].dropna()
-                
-                if len(close_series) >= 2:
-                    curr_price = float(close_series.iloc[-1])
-                    prev_price = float(close_series.iloc[-2])
-                    pct_change = ((curr_price - prev_price) / prev_price) * 100
-                    records.append({
-                        "Symbol": sym,
-                        "Name": name,
-                        "Price": curr_price,
-                        "Change (%)": pct_change,
-                        "Market": "NSE",
-                        "Size": 1
-                    })
-            except Exception:
+    records = []
+    
+    # Process in chunks of 30 to prevent yfinance batch timeouts and missing data
+    chunk_size = 30
+    for i in range(0, len(tickers), chunk_size):
+        chunk_tickers = tickers[i:i + chunk_size]
+        try:
+            data = yf.download(tickers=chunk_tickers, period="5d", auto_adjust=True, threads=True, progress=False)
+            if data.empty:
                 continue
-        return pd.DataFrame(records)
-    except Exception:
-        return pd.DataFrame()
+
+            # MultiIndex Column Handling
+            if isinstance(data.columns, pd.MultiIndex):
+                close_data = data['Close']
+            else:
+                close_data = data[['Close']]
+
+            for sym in chunk_tickers:
+                try:
+                    if sym in close_data.columns:
+                        s = close_data[sym].dropna()
+                    else:
+                        continue
+                    
+                    if len(s) >= 2:
+                        curr_price = float(s.iloc[-1])
+                        prev_price = float(s.iloc[-2])
+                        if prev_price > 0:
+                            pct_change = ((curr_price - prev_price) / prev_price) * 100
+                            records.append({
+                                "Symbol": sym,
+                                "Name": symbol_dict[sym],
+                                "Price": curr_price,
+                                "Change (%)": pct_change,
+                                "Market": "NSE/BSE",
+                                "Size": 1
+                            })
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    return pd.DataFrame(records)
 
 @st.cache_data(ttl=300)
 def fetch_individual_chart(symbol, period, interval):
     try:
-        df = yf.download(tickers=symbol, period=period, interval=interval, auto_adjust=True)
-        # Robust column flattening fix for yfinance MultiIndex structures
+        df = yf.download(tickers=symbol, period=period, interval=interval, auto_adjust=True, progress=False)
+        # Column flattening for MultiIndex data frames
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(level=1, axis=1) if len(df.columns.levels) > 1 else df
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
@@ -161,11 +181,11 @@ for idx, (name, symbol) in enumerate(MACRO_TICKERS.items()):
 st.markdown("---")
 
 # -------------------------------------------------------------
-# 2. NSE SECTOR & MARKET CAP HEATMAPS
+# 2. NSE / BSE SECTOR & MARKET CAP HEATMAPS
 # -------------------------------------------------------------
-st.subheader("🔥 NSE Sector & Market Cap Heatmaps")
+st.subheader("🔥 NSE & BSE Sector & Market Cap Heatmaps")
 
-selected_group_name = st.selectbox("Select Category or Sector:", list(MARKET_GROUPS.keys()), index=0)
+selected_group_name = st.selectbox("Select Sector or Market Cap Category:", list(MARKET_GROUPS.keys()), index=0)
 
 selected_group = MARKET_GROUPS[selected_group_name]
 heatmap_df = fetch_heatmap_data(selected_group)
@@ -176,17 +196,17 @@ if not heatmap_df.empty:
         path=['Market', 'Name'],
         values='Size',
         color='Change (%)',
-        color_continuous_scale=['#E53935', '#263238', '#43A047'], # Refined Red -> Charcoal -> Green
+        color_continuous_scale=['#E53935', '#263238', '#43A047'],
         color_continuous_midpoint=0,
         custom_data=['Symbol', 'Price', 'Change (%)']
     )
     fig_heatmap.update_traces(
         hovertemplate="<b>%{label}</b><br>Symbol: %{customdata[0]}<br>Price: ₹%{customdata[1]:,.2f}<br>Change: %{customdata[2]:+.2f}%"
     )
-    fig_heatmap.update_layout(height=450, margin=dict(l=5, r=5, t=5, b=5))
+    fig_heatmap.update_layout(height=520, margin=dict(l=5, r=5, t=5, b=5))
     st.plotly_chart(fig_heatmap, use_container_width=True)
 else:
-    st.info("Fetching real-time sector heatmap data...")
+    st.info("Loading full constituent heatmap data...")
 
 st.markdown("---")
 
@@ -208,7 +228,7 @@ with col_sel1:
     chart_symbol = all_searchable_assets[selected_asset_label]
 
 with col_sel2:
-    custom_input = st.text_input("Or enter ANY custom Ticker (e.g. TATAMOTORS.NS):", value="")
+    custom_input = st.text_input("Or enter ANY Ticker (e.g. TATAMOTORS.NS or RELIANCE.BO):", value="")
     if custom_input.strip():
         chart_symbol = custom_input.strip().upper()
 
@@ -222,18 +242,15 @@ col_graph, col_stats = st.columns([3.2, 1])
 
 with col_graph:
     if not chart_df.empty and 'Close' in chart_df.columns and len(chart_df) > 0:
-        # Guarantee 1D Series for Close, Open, High, Low, Volume
         close_series = chart_df['Close'].squeeze()
         open_series = chart_df['Open'].squeeze()
         high_series = chart_df['High'].squeeze()
         low_series = chart_df['Low'].squeeze()
         volume_series = chart_df['Volume'].squeeze() if 'Volume' in chart_df.columns else None
 
-        # Compute Moving Averages cleanly
         sma_20 = close_series.rolling(window=20).mean()
         sma_50 = close_series.rolling(window=50).mean()
 
-        # Build Subplot Layout (Row 1: Candlestick, Row 2: Volume)
         fig = make_subplots(
             rows=2, cols=1, 
             shared_xaxes=True, 
@@ -241,7 +258,6 @@ with col_graph:
             row_heights=[0.75, 0.25]
         )
 
-        # 1. Candlestick Trace
         fig.add_trace(go.Candlestick(
             x=chart_df.index,
             open=open_series,
@@ -253,7 +269,6 @@ with col_graph:
             decreasing_line_color='#ef5350', decreasing_fillcolor='#ef5350'
         ), row=1, col=1)
 
-        # 2. SMA 20 Overlay (Golden Amber)
         fig.add_trace(go.Scatter(
             x=chart_df.index,
             y=sma_20,
@@ -262,7 +277,6 @@ with col_graph:
             line=dict(color='#FFA726', width=1.5)
         ), row=1, col=1)
 
-        # 3. SMA 50 Overlay (Cyan)
         fig.add_trace(go.Scatter(
             x=chart_df.index,
             y=sma_50,
@@ -271,7 +285,6 @@ with col_graph:
             line=dict(color='#29B6F6', width=1.5)
         ), row=1, col=1)
 
-        # 4. Volume Bar Chart Subplot
         if volume_series is not None:
             colors = ['#26a69a' if c >= o else '#ef5350' for c, o in zip(close_series, open_series)]
             fig.add_trace(go.Bar(
@@ -282,7 +295,6 @@ with col_graph:
                 opacity=0.6
             ), row=2, col=1)
 
-        # Enhanced Chart Styling & Dark Theme Customization
         fig.update_layout(
             title=f"<b>{selected_asset_label} [{chart_symbol}]</b> — {time_frame.upper()}",
             template="plotly_dark",
@@ -300,7 +312,7 @@ with col_graph:
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.error(f"No chart data available for '{chart_symbol}'. Ensure '.NS' suffix is used for Indian stocks.")
+        st.error(f"No chart data available for '{chart_symbol}'. Append '.NS' for NSE or '.BO' for BSE tickers.")
 
 with col_stats:
     st.subheader("Asset Stats")
@@ -322,3 +334,4 @@ with col_stats:
             st.write("Stats unavailable")
     else:
         st.write("Data loading...")
+        
