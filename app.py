@@ -6,8 +6,8 @@ import plotly.express as px
 import pandas as pd
 
 # Page Setup
-st.set_page_config(page_title="Macro, Commodities & NSE/BSE Sector Dashboard", layout="wide")
-st.title("🌐 Real-Time Global Macro, Commodities & NSE/BSE Market Dashboard")
+st.set_page_config(page_title="Macro, Commodities & NSE Sector Dashboard", layout="wide")
+st.title("🌐 Real-Time Global Macro, Commodities & NSE Market Dashboard")
 
 # -------------------------------------------------------------
 # GLOBAL COMMODITIES & MACRO SNAPSHOT TICKERS
@@ -24,7 +24,7 @@ MACRO_TICKERS = {
 }
 
 # -------------------------------------------------------------
-# DYNAMIC NSE & BSE SECTOR / CAP FETCHER
+# DYNAMIC NSE SECTOR & CAP FETCHER
 # -------------------------------------------------------------
 @st.cache_data(ttl=86400)
 def get_live_constituents():
@@ -51,10 +51,13 @@ def get_live_constituents():
     nifty_realty = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyrealtylist.csv", {"DLF.NS": "DLF", "GODREJPROP.NS": "Godrej Prop", "OBERREALTY.NS": "Oberoi Realty"})
     nifty_fin_service = load_nse_csv("https://archives.nseindia.com/content/indices/ind_niftyfinancialserviceslist.csv", {"BAJFINANCE.NS": "Bajaj Finance", "BAJAJFINSV.NS": "Bajaj Finserv"})
 
-    return {
-        "NSE Large Cap (Nifty 50)": large_cap,
-        "NSE Mid Cap (Midcap 150)": mid_cap,
-        "NSE Small Cap (Smallcap 250)": small_cap,
+    caps = {
+        "Large Cap (Nifty 50)": large_cap,
+        "Mid Cap (Midcap 150)": mid_cap,
+        "Small Cap (Smallcap 250)": small_cap
+    }
+
+    sectors = {
         "Nifty Auto": nifty_auto,
         "Nifty Bank": nifty_bank,
         "Nifty IT": nifty_it,
@@ -66,24 +69,29 @@ def get_live_constituents():
         "Nifty Financial Services": nifty_fin_service
     }
 
-MARKET_GROUPS = get_live_constituents()
+    return caps, sectors
+
+MARKET_CAPS, MARKET_SECTORS = get_live_constituents()
 
 # -------------------------------------------------------------
-# CACHED DATA HELPERS & BATCH CHUNKING
+# CACHED DATA HELPERS
 # -------------------------------------------------------------
 @st.cache_data(ttl=300)
-def fetch_ticker_data(symbols):
+def fetch_single_macro_ticker(symbol):
     try:
-        return yf.download(tickers=list(symbols), period="5d", auto_adjust=True)
+        df = yf.download(tickers=symbol, period="5d", auto_adjust=True, progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df.droplevel(level=1, axis=1) if len(df.columns.levels) > 1 else df
+            df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+        return df['Close'].dropna()
     except Exception:
-        return pd.DataFrame()
+        return pd.Series(dtype=float)
 
 @st.cache_data(ttl=300)
-def fetch_heatmap_data(symbol_dict):
+def fetch_heatmap_data(symbol_dict, group_label="NSE"):
     tickers = list(symbol_dict.keys())
     records = []
     
-    # Process in chunks of 30 to prevent yfinance batch timeouts and missing data
     chunk_size = 30
     for i in range(0, len(tickers), chunk_size):
         chunk_tickers = tickers[i:i + chunk_size]
@@ -92,7 +100,6 @@ def fetch_heatmap_data(symbol_dict):
             if data.empty:
                 continue
 
-            # MultiIndex Column Handling
             if isinstance(data.columns, pd.MultiIndex):
                 close_data = data['Close']
             else:
@@ -115,7 +122,7 @@ def fetch_heatmap_data(symbol_dict):
                                 "Name": symbol_dict[sym],
                                 "Price": curr_price,
                                 "Change (%)": pct_change,
-                                "Market": "NSE/BSE",
+                                "Category": group_label,
                                 "Size": 1
                             })
                 except Exception:
@@ -126,10 +133,26 @@ def fetch_heatmap_data(symbol_dict):
     return pd.DataFrame(records)
 
 @st.cache_data(ttl=300)
+def fetch_sector_overview_data(sector_dict):
+    """Calculates weighted average performance for each individual sector."""
+    records = []
+    for sector_name, symbol_dict in sector_dict.items():
+        df_sec = fetch_heatmap_data(symbol_dict, group_label=sector_name)
+        if not df_sec.empty:
+            avg_change = df_sec["Change (%)"].mean()
+            records.append({
+                "Sector": sector_name,
+                "Market": "NSE Sectors",
+                "Average Change (%)": avg_change,
+                "Stock Count": len(df_sec),
+                "Size": 1
+            })
+    return pd.DataFrame(records)
+
+@st.cache_data(ttl=300)
 def fetch_individual_chart(symbol, period, interval):
     try:
         df = yf.download(tickers=symbol, period=period, interval=interval, auto_adjust=True, progress=False)
-        # Column flattening for MultiIndex data frames
         if isinstance(df.columns, pd.MultiIndex):
             df = df.droplevel(level=1, axis=1) if len(df.columns.levels) > 1 else df
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
@@ -147,77 +170,133 @@ if st.sidebar.button("🔄 Refresh Market Data"):
 st.subheader("🛢️ Global Energy, Metals & Macro Commodities")
 cols = st.columns(len(MACRO_TICKERS))
 
-macro_data = fetch_ticker_data(list(MACRO_TICKERS.values()))
-
 for idx, (name, symbol) in enumerate(MACRO_TICKERS.items()):
     try:
-        if not macro_data.empty:
-            if isinstance(macro_data.columns, pd.MultiIndex) and symbol in macro_data.columns.levels[0]:
-                df_ticker = macro_data[symbol].dropna(subset=['Close'])
-            else:
-                df_ticker = macro_data.dropna(subset=['Close'])
-                
-            if len(df_ticker) >= 2:
-                latest_price = float(df_ticker['Close'].iloc[-1])
-                prev_price = float(df_ticker['Close'].iloc[-2])
-                delta = latest_price - prev_price
-                delta_pct = (delta / prev_price) * 100
-                
-                cols[idx].metric(
-                    label=name, 
-                    value=f"{latest_price:,.2f}", 
-                    delta=f"{delta:+.2f} ({delta_pct:+.2f}%)"
-                )
-            elif len(df_ticker) == 1:
-                latest_price = float(df_ticker['Close'].iloc[-1])
-                cols[idx].metric(label=name, value=f"{latest_price:,.2f}", delta="N/A")
-            else:
-                cols[idx].metric(label=name, value="No Data")
+        s = fetch_single_macro_ticker(symbol)
+        if len(s) >= 2:
+            latest_price = float(s.iloc[-1])
+            prev_price = float(s.iloc[-2])
+            delta = latest_price - prev_price
+            delta_pct = (delta / prev_price) * 100
+            
+            cols[idx].metric(
+                label=name, 
+                value=f"{latest_price:,.2f}", 
+                delta=f"{delta:+.2f} ({delta_pct:+.2f}%)"
+            )
+        elif len(s) == 1:
+            latest_price = float(s.iloc[-1])
+            cols[idx].metric(label=name, value=f"{latest_price:,.2f}", delta="N/A")
         else:
             cols[idx].metric(label=name, value="No Data")
     except Exception:
-        cols[idx].metric(label=name, value="Error")
+        cols[idx].metric(label=name, value="No Data")
 
 st.markdown("---")
 
 # -------------------------------------------------------------
-# 2. NSE / BSE SECTOR & MARKET CAP HEATMAPS
+# 2. MARKET CAP HEATMAPS (LARGE, MID, SMALL CAP SEPARATE)
 # -------------------------------------------------------------
-st.subheader("🔥 NSE & BSE Sector & Market Cap Heatmaps")
+st.subheader("🔥 Market Cap Heatmaps")
 
-selected_group_name = st.selectbox("Select Sector or Market Cap Category:", list(MARKET_GROUPS.keys()), index=0)
+tab_large, tab_mid, tab_small = st.tabs(["Large Cap (Nifty 50)", "Mid Cap (Midcap 150)", "Small Cap (Smallcap 250)"])
 
-selected_group = MARKET_GROUPS[selected_group_name]
-heatmap_df = fetch_heatmap_data(selected_group)
+def render_cap_section(cap_name, cap_dict):
+    df_cap = fetch_heatmap_data(cap_dict, group_label=cap_name)
+    if not df_cap.empty:
+        fig = px.treemap(
+            df_cap,
+            path=['Category', 'Name'],
+            values='Size',
+            color='Change (%)',
+            color_continuous_scale=['#E53935', '#263238', '#43A047'],
+            color_continuous_midpoint=0,
+            custom_data=['Symbol', 'Price', 'Change (%)']
+        )
+        fig.update_traces(
+            hovertemplate="<b>%{label}</b><br>Symbol: %{customdata[0]}<br>Price: ₹%{customdata[1]:,.2f}<br>Change: %{customdata[2]:+.2f}%"
+        )
+        fig.update_layout(height=450, margin=dict(l=5, r=5, t=5, b=5))
+        st.plotly_chart(fig, use_container_width=True)
 
-if not heatmap_df.empty:
-    fig_heatmap = px.treemap(
-        heatmap_df,
-        path=['Market', 'Name'],
+        # Top 10 Gainers & Losers
+        st.markdown(f"#### 📊 Top 10 Gainers & Losers in {cap_name}")
+        df_sorted = df_cap.sort_values(by="Change (%)", ascending=False)
+        gainers = df_sorted.head(10)[["Name", "Symbol", "Price", "Change (%)"]].reset_index(drop=True)
+        losers = df_sorted.tail(10).sort_values(by="Change (%)", ascending=True)[["Name", "Symbol", "Price", "Change (%)"]].reset_index(drop=True)
+
+        col_g, col_l = st.columns(2)
+        with col_g:
+            st.success("🟢 Top 10 Gainers")
+            st.dataframe(gainers.style.format({"Price": "₹{:,.2f}", "Change (%)": "{:+.2f}%"}), use_container_width=True)
+        with col_l:
+            st.error("🔴 Top 10 Losers")
+            st.dataframe(losers.style.format({"Price": "₹{:,.2f}", "Change (%)": "{:+.2f}%"}), use_container_width=True)
+    else:
+        st.info(f"Loading {cap_name} heatmap data...")
+
+with tab_large:
+    render_cap_section("Large Cap", MARKET_CAPS["Large Cap (Nifty 50)"])
+
+with tab_mid:
+    render_cap_section("Mid Cap", MARKET_CAPS["Mid Cap (Midcap 150)"])
+
+with tab_small:
+    render_cap_section("Small Cap", MARKET_CAPS["Small Cap (Smallcap 250)"])
+
+st.markdown("---")
+
+# -------------------------------------------------------------
+# 3. SECTOR HEATMAP & TOP 10 GAINERS / LOSERS
+# -------------------------------------------------------------
+st.subheader("🏙️ NSE Sectors Overview & Deep-Dive")
+
+df_sectors_overview = fetch_sector_overview_data(MARKET_SECTORS)
+
+if not df_sectors_overview.empty:
+    fig_sec = px.treemap(
+        df_sectors_overview,
+        path=['Market', 'Sector'],
         values='Size',
-        color='Change (%)',
+        color='Average Change (%)',
         color_continuous_scale=['#E53935', '#263238', '#43A047'],
         color_continuous_midpoint=0,
-        custom_data=['Symbol', 'Price', 'Change (%)']
+        custom_data=['Sector', 'Average Change (%)', 'Stock Count']
     )
-    fig_heatmap.update_traces(
-        hovertemplate="<b>%{label}</b><br>Symbol: %{customdata[0]}<br>Price: ₹%{customdata[1]:,.2f}<br>Change: %{customdata[2]:+.2f}%"
+    fig_sec.update_traces(
+        hovertemplate="<b>%{customdata[0]}</b><br>Avg Performance: %{customdata[1]:+.2f}%<br>Stocks Tracked: %{customdata[2]}"
     )
-    fig_heatmap.update_layout(height=520, margin=dict(l=5, r=5, t=5, b=5))
-    st.plotly_chart(fig_heatmap, use_container_width=True)
-else:
-    st.info("Loading full constituent heatmap data...")
+    fig_sec.update_layout(height=380, margin=dict(l=5, r=5, t=5, b=5))
+    st.plotly_chart(fig_sec, use_container_width=True)
+
+# Sector Breakdown Selectbox
+selected_sector_name = st.selectbox("Select a Sector to View Top Gainers & Losers:", list(MARKET_SECTORS.keys()))
+
+if selected_sector_name:
+    df_sec_stocks = fetch_heatmap_data(MARKET_SECTORS[selected_sector_name], group_label=selected_sector_name)
+    if not df_sec_stocks.empty:
+        df_sec_sorted = df_sec_stocks.sort_values(by="Change (%)", ascending=False)
+        sec_gainers = df_sec_sorted.head(10)[["Name", "Symbol", "Price", "Change (%)"]].reset_index(drop=True)
+        sec_losers = df_sec_sorted.tail(10).sort_values(by="Change (%)", ascending=True)[["Name", "Symbol", "Price", "Change (%)"]].reset_index(drop=True)
+
+        col_sg, col_sl = st.columns(2)
+        with col_sg:
+            st.success(f"🟢 Top Gainers in {selected_sector_name}")
+            st.dataframe(sec_gainers.style.format({"Price": "₹{:,.2f}", "Change (%)": "{:+.2f}%"}), use_container_width=True)
+        with col_sl:
+            st.error(f"🔴 Top Losers in {selected_sector_name}")
+            st.dataframe(sec_losers.style.format({"Price": "₹{:,.2f}", "Change (%)": "{:+.2f}%"}), use_container_width=True)
 
 st.markdown("---")
 
 # -------------------------------------------------------------
-# 3. INDIVIDUAL CHART DEEP-DIVE (ENHANCED VISUALS & SUBPLOTS)
+# 4. INDIVIDUAL CHART DEEP-DIVE
 # -------------------------------------------------------------
 st.subheader("📈 Interactive Asset Chart Deep Dive")
 
 all_searchable_assets = {}
 all_searchable_assets.update({v: k for k, v in MACRO_TICKERS.items()})
-for group in MARKET_GROUPS.values():
+for group in list(MARKET_CAPS.values()) + list(MARKET_SECTORS.values()):
     for sym, name in group.items():
         all_searchable_assets[f"{name} ({sym})"] = sym
 
@@ -334,4 +413,3 @@ with col_stats:
             st.write("Stats unavailable")
     else:
         st.write("Data loading...")
-        
